@@ -109,7 +109,9 @@ func (cmd *RunCommand) Open(config *Config, join string) (*messaging.Broker, *in
 	}
 
 	// Open broker & raft log, initialize or join as necessary.
-	cmd.openBroker(joinURLs)
+	if cmd.config.Broker.Enabled {
+		cmd.openBroker(joinURLs)
+	}
 
 	// Start the broker handler.
 	var h *Handler
@@ -142,25 +144,28 @@ func (cmd *RunCommand) Open(config *Config, join string) (*messaging.Broker, *in
 		}
 	}
 
+	var s *influxdb.Server
 	// Open server, initialize or join as necessary.
-	s := cmd.openServer(joinURLs)
-	s.SetAuthenticationEnabled(cmd.config.Authentication.Enabled)
+	if cmd.config.Data.Enabled {
+		s = cmd.openServer(joinURLs)
+		s.SetAuthenticationEnabled(cmd.config.Authentication.Enabled)
 
-	// Enable retention policy enforcement if requested.
-	if cmd.config.Data.RetentionCheckEnabled {
-		interval := time.Duration(cmd.config.Data.RetentionCheckPeriod)
-		if err := s.StartRetentionPolicyEnforcement(interval); err != nil {
-			log.Fatalf("retention policy enforcement failed: %s", err.Error())
+		// Enable retention policy enforcement if requested.
+		if cmd.config.Data.RetentionCheckEnabled {
+			interval := time.Duration(cmd.config.Data.RetentionCheckPeriod)
+			if err := s.StartRetentionPolicyEnforcement(interval); err != nil {
+				log.Fatalf("retention policy enforcement failed: %s", err.Error())
+			}
+			log.Printf("broker enforcing retention policies with check interval of %s", interval)
 		}
-		log.Printf("broker enforcing retention policies with check interval of %s", interval)
-	}
 
-	// Start shard group pre-create
-	interval := cmd.config.ShardGroupPreCreateCheckPeriod()
-	if err := s.StartShardGroupsPreCreate(interval); err != nil {
-		log.Fatalf("shard group pre-create failed: %s", err.Error())
+		// Start shard group pre-create
+		interval := cmd.config.ShardGroupPreCreateCheckPeriod()
+		if err := s.StartShardGroupsPreCreate(interval); err != nil {
+			log.Fatalf("shard group pre-create failed: %s", err.Error())
+		}
+		log.Printf("shard group pre-create with check interval of %s", interval)
 	}
-	log.Printf("shard group pre-create with check interval of %s", interval)
 
 	// Start the server handler. Attach to broker if listening on the same port.
 	if s != nil {
@@ -275,10 +280,14 @@ func (cmd *RunCommand) Open(config *Config, join string) (*messaging.Broker, *in
 
 	// unless disabled, start the loop to report anonymous usage stats every 24h
 	if !cmd.config.ReportingDisabled {
-		// Make sure we have a config object b4 we try to use it.
-		if clusterID := cmd.server.broker.Broker.ClusterID(); clusterID != 0 {
-			go s.StartReportingLoop(clusterID)
+
+		if cmd.config.Broker.Enabled && cmd.config.Data.Enabled {
+			// Make sure we have a config object b4 we try to use it.
+			if clusterID := cmd.server.broker.Broker.ClusterID(); clusterID != 0 {
+				go s.StartReportingLoop(clusterID)
+			}
 		}
+		log.Fatalln("failed to start reporting because not running as a broker and a data node")
 	}
 
 	return cmd.server.broker.Broker, s
