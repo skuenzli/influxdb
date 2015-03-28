@@ -602,6 +602,11 @@ func runTestsData(t *testing.T, testName string, nodes Cluster, database, retent
 			query:    `SELECT value FROM "%DB%"."%RP%".cpu WHERE host = 'server02'`,
 			expected: `{"results":[{"series":[{"name":"cpu","columns":["time","value"],"values":[["2010-02-28T01:03:37.703820946Z",200]]}]}]}`,
 		},
+		{
+			name:     "WHERE tags SELECT single field (NEQ tag value1)",
+			query:    `SELECT value FROM "%DB%"."%RP%".cpu WHERE host != 'server01'`,
+			expected: `{"results":[{"series":[{"name":"cpu","columns":["time","value"],"values":[["2010-02-28T01:03:37.703820946Z",200]]}]}]}`,
+		},
 
 		// WHERE fields queries
 		{
@@ -1188,7 +1193,6 @@ func TestSingleServer(t *testing.T) {
 	nodes := createCombinedNodeCluster(t, testName, dir, 1, 8090, nil)
 
 	runTestsData(t, testName, nodes, "mydb", "myrp")
-	runTest_rawDataReturnsInOrder(t, testName, nodes, "mydb", "myrp")
 }
 
 func Test3NodeServer(t *testing.T) {
